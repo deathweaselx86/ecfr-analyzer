@@ -1,0 +1,52 @@
+site_name: ecfr-analyzer
+repo_url: https://github.com/deathweaselx86/ecfr-analyzer
+site_url: https://deathweaselx86.github.io/ecfr-analyzer
+site_description: This is a simple website for analyzing federal regulations by agency.
+site_author: Jessica McKinnie
+edit_uri: edit/main/docs/
+repo_name: deathweaselx86/ecfr-analyzer
+copyright: Maintained by <a href="https://deathweaselx86.com">deathweaselx86</a>.
+
+nav:
+  - Home: index.md
+  - Modules: modules.md
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["src/ecfr_analyzer"]
+theme:
+  name: material
+  feature:
+    tabs: true
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/deathweaselx86/ecfr-analyzer
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/ecfr-analyzer
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
