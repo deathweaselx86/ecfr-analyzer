@@ -15,7 +15,7 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          paths: ["src/ecfr_analyzer"]
+          paths: ["src"]
 theme:
   name: material
   feature:

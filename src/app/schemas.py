@@ -17,8 +17,8 @@ class CFRReferenceSchema(BaseModel):
     subchapter: str | None
 
 
-class TitleSchema(BaseModel):
-    """Title response schema."""
+class TitleMetadataSchema(BaseModel):
+    """Title metadata response schema."""
 
     model_config = ConfigDict(from_attributes=True)
 

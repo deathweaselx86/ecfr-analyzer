@@ -2,7 +2,20 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Computed,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -23,7 +36,7 @@ class Agency(Base):
     display_name = Column(String, nullable=False)
     sortable_name = Column(String, nullable=False)
     slug = Column(String, nullable=False, unique=True)
-    parent_id = Column(Integer, ForeignKey("agencies.id", ondelete="CASCADE"), nullable=True)
+    parent_id = Column(Integer, ForeignKey("agencies.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
     # Relationships
@@ -46,11 +59,17 @@ class CFRReference(Base):
     chapter = Column(String, nullable=True)
     part = Column(Integer, nullable=True)
     subchapter = Column(String, nullable=True)
+    content = Column(Text, nullable=True)
+
+    search_vector = Column(TSVECTOR, Computed("to_tsvector('english', coalesce(content, ''))", persisted=True))
 
     # Relationships
     agencies = relationship("Agency", secondary="agency_cfr_references", back_populates="cfr_references")
 
-    __table_args__ = (UniqueConstraint("title", "chapter", "part", "subchapter"),)
+    __table_args__ = (
+        UniqueConstraint("title", "chapter", "part", "subchapter"),
+        Index("idx_cfr_references_search_vector", "search_vector", postgresql_using="gin"),
+    )
 
 
 class AgencyCFRReference(Base):
@@ -67,10 +86,10 @@ class AgencyCFRReference(Base):
     )
 
 
-class Title(Base):
-    """CFR Title model representing Code of Federal Regulations titles."""
+class TitleMetadata(Base):
+    """CFR Title metadata model"""
 
-    __tablename__ = "titles"
+    __tablename__ = "title_metadata"
 
     number = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)

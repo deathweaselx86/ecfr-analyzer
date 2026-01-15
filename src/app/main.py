@@ -3,13 +3,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.routers import agencies, titles
 
 # Create FastAPI app
 app = FastAPI(
-    title="eCFR Analyzer API",
-    description="Read-only REST API for analyzing federal regulations by agency",
-    version="0.0.1",
+    title=settings.api_title,
+    description=settings.api_description,
+    version=settings.api_version,
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -17,7 +18,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET"],  # Read-only API
     allow_headers=["*"],
@@ -36,8 +37,8 @@ def root() -> dict[str, str]:
         API information
     """
     return {
-        "name": "eCFR Analyzer API",
-        "version": "0.0.1",
+        "name": settings.api_title,
+        "version": settings.api_version,
         "docs": "/docs",
         "redoc": "/redoc",
     }

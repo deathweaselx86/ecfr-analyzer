@@ -13,9 +13,11 @@ All application code lives under `src/app/`:
 
 - **Models** (`src/app/models.py`): SQLAlchemy ORM models defining database schema
   - `Agency`: Federal agencies with hierarchical parent-child relationships
-  - `CFRReference`: CFR title/chapter/part/subchapter references
+  - `CFRReference`: CFR title/chapter/part/subchapter references with text content
+    - `content` field stores extracted text from eCFR XML for full-text search
+    - `search_vector` computed field provides PostgreSQL full-text search via GIN index
   - `AgencyCFRReference`: Many-to-many junction table
-  - `Title`: CFR titles with metadata (amendment dates, reserved status)
+  - `TitleMetadata`: CFR titles with metadata (amendment dates, reserved status)
   - All models include SQLAlchemy relationships for ORM queries
 
 - **API** (`src/app/main.py`): FastAPI app with CORS middleware
@@ -27,10 +29,19 @@ All application code lives under `src/app/`:
 
 ### Data Ingestion Scripts
 - **`scripts/create_db.py`**: Creates database schema from SQLAlchemy models
-- **`scripts/fetch_ecfr.py`**: Fetches both titles and agencies from eCFR API and populates database
-  - Uses upsert logic (ON CONFLICT) for re-runs
+- **`scripts/fetch_ecfr.py`**: Async script that fetches titles, agencies, and CFR content from eCFR API
+  - **Technology**: Uses `httpx` for async HTTP requests and `aiolimiter` for rate limiting
+  - **Three-phase execution**: `run_data_ingestion()` orchestrates the full pipeline
+    1. `fetch_and_store_title_metadata()` - Fetches title metadata from `/api/versioner/v1/titles.json`
+    2. `fetch_and_store_agencies()` - Fetches agency hierarchy from `/api/admin/v1/agencies.json`
+    3. `fetch_and_populate_cfr_content()` - Fetches XML content for each CFR reference
+  - **XML content retrieval**: Uses title-specific dates from `TitleMetadata.up_to_date_as_of` for accurate versioning
+    - Endpoint: `/api/versioner/v1/full/{date}/title-{title}.xml` with optional chapter/part/subchapter params
+    - Text extraction truncates to 1,048,575 characters (PostgreSQL tsvector limit)
+  - Uses upsert logic for re-runs (idempotent operations)
   - Handles hierarchical agency data recursively
-  - Parses ISO 8601 dates for Title model
+  - **Rate limiting**: Uses `AsyncLimiter` (100 calls per 60 seconds) to respect eCFR API limits
+  - Progress saved every 10 records during content population
 
 ### Path Management
 All scripts add `src/` to Python path using:
@@ -58,8 +69,18 @@ make install  # Creates virtual environment, installs dependencies, sets up pre-
 ```bash
 export ECFR_DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
 make createdb  # Create database schema
-make fetch     # Fetch eCFR data (titles and agencies)
+make fetch     # Fetch eCFR data (titles, agencies, and XML content for CFR references)
 ```
+
+**Note**: The `make fetch` command performs three steps:
+1. Fetches and stores CFR title metadata (including `up_to_date_as_of` dates)
+2. Fetches and stores agencies with their CFR references
+3. Fetches XML content for each CFR reference using title-specific dates
+   - Each CFR reference uses its title's `up_to_date_as_of` date for accurate versioning
+   - Extracts plain text and stores in `CFRReference.content` (max 1,048,575 chars)
+   - Skips references with missing title metadata
+
+This process respects eCFR API rate limits (100 calls/minute) and may take time for large datasets.
 
 ### API Development
 ```bash
@@ -105,7 +126,9 @@ make docs-test          # Test if documentation builds without errors
 - `uvicorn>=0.34.0` - ASGI server
 - `sqlalchemy>=2.0.0` - ORM and database toolkit
 - `psycopg2-binary>=2.9.0` - PostgreSQL adapter
-- `requests>=2.32.0` - HTTP client for eCFR API
+- `requests>=2.32.0` - HTTP client (legacy, kept for compatibility)
+- `httpx>=0.28.1` - Async HTTP client for eCFR API
+- `aiolimiter>=1.2.1` - Async rate limiting
 
 **Development:**
 - `ruff>=0.14.10` - Linting and formatting
@@ -150,9 +173,12 @@ docs/                 # MkDocs documentation
 
 - **Agency hierarchy**: Self-referential `parent_id` foreign key with CASCADE delete
 - **CFR references**: Shared across agencies via junction table (not unique per agency)
-- **Title uniqueness**: Primary key is `number` (not auto-increment ID)
+  - `content` field stores extracted text (max 1,048,575 chars due to tsvector limit)
+  - `search_vector` computed column enables full-text search with GIN index
+- **TitleMetadata uniqueness**: Primary key is `number` (not auto-increment ID)
+  - `up_to_date_as_of` date used for versioned XML retrieval per title
 - **Upsert patterns**: Scripts use `ON CONFLICT` for idempotent re-runs
-- **Indexes**: Created on `agencies.slug`, `agencies.parent_id`, and junction table foreign keys
+- **Indexes**: Created on `agencies.slug`, `agencies.parent_id`, `cfr_references.search_vector` (GIN), and junction table foreign keys
 
 ## API Design Patterns
 
