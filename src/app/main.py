@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import agencies, titles
+from app.routers import agencies, titles, web
 
 # Create FastAPI app
 app = FastAPI(
@@ -25,23 +25,9 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(web.router)  # Web frontend (no prefix)
 app.include_router(agencies.router, prefix="/api/v1")
 app.include_router(titles.router, prefix="/api/v1")
-
-
-@app.get("/")
-def root() -> dict[str, str]:
-    """Root endpoint with API information.
-
-    Returns:
-        API information
-    """
-    return {
-        "name": settings.api_title,
-        "version": settings.api_version,
-        "docs": "/docs",
-        "redoc": "/redoc",
-    }
 
 
 @app.get("/health")

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Search CFR Content - eCFR Analyzer{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold text-gray-800 mb-6">Search CFR Content</h1>
+
+    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <form hx-get="/search/results" hx-target="#search-results" hx-trigger="submit" hx-swap="innerHTML">
+            <div class="flex gap-2 mb-4">
+                <input
+                    type="text"
+                    name="q"
+                    placeholder="Enter search terms..."
+                    value="{{ query if query else '' }}"
+                    class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                    required
+                >
+                <button type="submit" class="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold">
+                    Search
+                </button>
+            </div>
+
+            <div class="flex gap-4 text-sm">
+                <label class="flex items-center">
+                    <input type="number" name="limit" value="20" min="1" max="100" class="w-16 px-2 py-1 border border-gray-300 rounded mr-2">
+                    <span class="text-gray-600">Results per page</span>
+                </label>
+            </div>
+        </form>
+    </div>
+
+    <div id="search-results">
+        {% if query %}
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <p class="text-blue-800">Enter search terms above to begin searching CFR content</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+<div class="space-y-4">
+    <!-- Agency Info -->
+    <div>
+        <h4 class="font-semibold text-gray-700 mb-2">Agency Information</h4>
+        <dl class="grid grid-cols-2 gap-2 text-sm">
+            <dt class="text-gray-600">Slug:</dt>
+            <dd class="text-gray-800 font-mono">{{ agency.slug }}</dd>
+            {% if agency.short_name %}
+            <dt class="text-gray-600">Short Name:</dt>
+            <dd class="text-gray-800">{{ agency.short_name }}</dd>
+            {% endif %}
+            {% if agency.parent %}
+            <dt class="text-gray-600">Parent Agency:</dt>
+            <dd class="text-gray-800">{{ agency.parent.display_name }}</dd>
+            {% endif %}
+        </dl>
+    </div>
+
+    <!-- Word Count -->
+    {% if word_count > 0 %}
+    <div>
+        <h4 class="font-semibold text-gray-700 mb-2">Content Statistics</h4>
+        <p class="text-sm text-gray-600">
+            Total words in CFR references: <span class="font-bold text-gray-800">{{ "{:,}".format(word_count) }}</span>
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- CFR References -->
+    {% if agency.cfr_references %}
+    <div>
+        <h4 class="font-semibold text-gray-700 mb-2">CFR References</h4>
+        <div class="space-y-1">
+            {% for ref in agency.cfr_references %}
+            <div class="flex items-center justify-between p-2 bg-white rounded border border-gray-200">
+                <span class="text-sm font-mono text-gray-800">
+                    Title {{ ref.title }}{% if ref.chapter %}, Chapter {{ ref.chapter }}{% endif %}{% if ref.part %}, Part {{ ref.part }}{% endif %}{% if ref.subchapter %}, Subchapter {{ ref.subchapter }}{% endif %}
+                </span>
+                {% if ref.content %}
+                <a href="/cfr/{{ ref.id }}" class="text-xs text-blue-600 hover:text-blue-700">View →</a>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Child Agencies -->
+    {% if agency.children %}
+    <div>
+        <h4 class="font-semibold text-gray-700 mb-2">Sub-Agencies ({{ agency.children|length }})</h4>
+        <div class="space-y-1">
+            {% for child in agency.children %}
+            <div class="p-2 bg-white rounded border border-gray-200 hover:border-blue-500 transition">
+                <a href="/agencies/{{ child.id }}" class="text-sm text-gray-800 hover:text-blue-600">
+                    {{ child.display_name }}
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>

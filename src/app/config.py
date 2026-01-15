@@ -1,13 +1,20 @@
 """Application configuration using Pydantic Settings."""
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Calculate path to .env file relative to this file's location
+# config.py is at src/app/config.py, so go up 2 levels to reach project root
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+_ENV_FILE = _PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env file."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",

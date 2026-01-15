@@ -33,6 +33,29 @@ createdb: ## Create database schema
 	@echo "🚀 Creating database schema"
 	@uv run python scripts/create_db.py
 
+.PHONY: migrate
+migrate: ## Apply database migrations
+	@echo "🚀 Running database migrations"
+	@uv run alembic upgrade head
+
+.PHONY: migrate-create
+migrate-create: ## Create a new migration (use MESSAGE="description")
+	@echo "🚀 Creating new migration"
+	@uv run alembic revision --autogenerate -m "$(MESSAGE)"
+
+.PHONY: migrate-history
+migrate-history: ## Show migration history
+	@uv run alembic history
+
+.PHONY: migrate-current
+migrate-current: ## Show current migration version
+	@uv run alembic current
+
+.PHONY: migrate-downgrade
+migrate-downgrade: ## Downgrade one migration version
+	@echo "⚠️  Downgrading database by one version"
+	@uv run alembic downgrade -1
+
 .PHONY: fetch
 fetch: ## Fetch eCFR data (titles and agencies)
 	@echo "🚀 Fetching eCFR data"
@@ -41,7 +64,7 @@ fetch: ## Fetch eCFR data (titles and agencies)
 .PHONY: serve
 serve: ## Run FastAPI development server
 	@echo "🚀 Starting FastAPI development server"
-	@uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	@cd src && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 .PHONY: help
 help:

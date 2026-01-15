@@ -52,8 +52,12 @@ def extract_text_from_xml(xml_content: str) -> str:
             if element.tail:
                 text_parts.append(element.tail.strip())
         text = " ".join(part for part in text_parts if part)
-        if len(text) > 1048575:
-            text = text[:1048575]
+        text_length = len(text)
+        if text_length > 1048575:
+            # tsvector size must be <= 1048575,
+            # so truncate to the last 1048575 characters, since the beginning is likely to be a
+            # bunch of the same front matter
+            text = text[-1048575:]
         return text  # noqa: TRY300
     except ET.ParseError:
         return ""
@@ -73,7 +77,6 @@ async def fetch_cfr_xml_content(
     Returns:
         Extracted text content or None if fetch fails
     """
-    # Build the API URL based on available parameters
     base_url = f"https://www.ecfr.gov/api/versioner/v1/full/{cfr_date}/title-{title}.xml"
 
     # Build query parameters for more specific retrieval

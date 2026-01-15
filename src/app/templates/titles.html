@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}CFR Titles - eCFR Analyzer{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <h1 class="text-3xl font-bold text-gray-800 mb-6">Code of Federal Regulations Titles</h1>
+
+    <div class="bg-white rounded-lg shadow-lg p-6">
+        <!-- Filters -->
+        <div class="mb-6 flex gap-4">
+            <input
+                type="text"
+                placeholder="Filter titles..."
+                class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                hx-get="/titles"
+                hx-trigger="keyup changed delay:300ms"
+                hx-target="#title-list"
+                hx-include="[name='include_reserved']"
+                name="filter"
+            >
+            <label class="flex items-center">
+                <input type="checkbox" name="include_reserved" class="mr-2"
+                    hx-get="/titles"
+                    hx-trigger="change"
+                    hx-target="#title-list"
+                    hx-include="[name='filter']">
+                <span class="text-sm text-gray-600">Include reserved</span>
+            </label>
+        </div>
+
+        <!-- Title List -->
+        <div id="title-list" class="space-y-3">
+            {% for title in titles %}
+            <div class="border border-gray-200 rounded-lg p-4 hover:border-blue-500 transition {% if title.reserved %}bg-gray-50{% else %}bg-white{% endif %}">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-lg font-semibold text-gray-800">Title {{ title.number }}</h3>
+                            {% if title.reserved %}
+                            <span class="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded">Reserved</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-gray-700 mt-1">{{ title.name }}</p>
+
+                        <dl class="mt-3 grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                            {% if title.latest_amended_on %}
+                            <div>
+                                <dt class="text-gray-500">Latest Amendment:</dt>
+                                <dd class="text-gray-700 font-medium">{{ title.latest_amended_on.strftime('%Y-%m-%d') }}</dd>
+                            </div>
+                            {% endif %}
+                            {% if title.latest_issue_date %}
+                            <div>
+                                <dt class="text-gray-500">Latest Issue:</dt>
+                                <dd class="text-gray-700 font-medium">{{ title.latest_issue_date.strftime('%Y-%m-%d') }}</dd>
+                            </div>
+                            {% endif %}
+                            {% if title.up_to_date_as_of %}
+                            <div>
+                                <dt class="text-gray-500">Up to Date As Of:</dt>
+                                <dd class="text-gray-700 font-medium">{{ title.up_to_date_as_of.strftime('%Y-%m-%d') }}</dd>
+                            </div>
+                            {% endif %}
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if titles|length == 0 %}
+        <p class="text-center text-gray-500 py-8">No titles found</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

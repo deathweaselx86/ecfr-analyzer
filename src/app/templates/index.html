@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Home - eCFR Analyzer{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <!-- Hero Section -->
+    <div class="bg-white rounded-lg shadow-lg p-8 mb-8">
+        <h1 class="text-4xl font-bold text-gray-800 mb-4">eCFR Analyzer</h1>
+        <p class="text-xl text-gray-600 mb-6">
+            Browse and search federal regulations by agency, title, and content
+        </p>
+
+        <!-- Quick Search -->
+        <div class="mb-6">
+            <form hx-get="/search" hx-target="#search-results" hx-trigger="submit" hx-swap="innerHTML" class="flex gap-2">
+                <input
+                    type="text"
+                    name="q"
+                    placeholder="Search CFR content..."
+                    class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                >
+                <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                    Search
+                </button>
+            </form>
+            <div id="search-results" class="mt-4"></div>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-blue-100 rounded-lg p-3">
+                    <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm text-gray-600">Total Agencies</p>
+                    <p class="text-2xl font-bold text-gray-800">{{ stats.total_agencies }}</p>
+                </div>
+            </div>
+            <a href="/agencies" class="mt-4 block text-blue-600 hover:text-blue-700 text-sm font-medium">
+                Browse all agencies →
+            </a>
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-green-100 rounded-lg p-3">
+                    <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm text-gray-600">CFR Titles</p>
+                    <p class="text-2xl font-bold text-gray-800">{{ stats.total_titles }}</p>
+                </div>
+            </div>
+            <a href="/titles" class="mt-4 block text-green-600 hover:text-green-700 text-sm font-medium">
+                Browse all titles →
+            </a>
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-purple-100 rounded-lg p-3">
+                    <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm text-gray-600">CFR References</p>
+                    <p class="text-2xl font-bold text-gray-800">{{ stats.total_cfr_refs }}</p>
+                </div>
+            </div>
+            <a href="/search" class="mt-4 block text-purple-600 hover:text-purple-700 text-sm font-medium">
+                Search content →
+            </a>
+        </div>
+    </div>
+
+    <!-- Features -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Browse by Agency</h2>
+            <p class="text-gray-600 mb-4">
+                Explore federal agencies in a hierarchical structure and see their associated CFR references.
+            </p>
+            <a href="/agencies" class="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+                View Agencies
+            </a>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Full-Text Search</h2>
+            <p class="text-gray-600 mb-4">
+                Search through CFR regulation content using PostgreSQL full-text search capabilities.
+            </p>
+            <a href="/search" class="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+                Search Now
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

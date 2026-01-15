@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Agencies - eCFR Analyzer{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <h1 class="text-3xl font-bold text-gray-800 mb-6">Federal Agencies</h1>
+
+    <div class="bg-white rounded-lg shadow-lg p-6">
+        <!-- Search/Filter -->
+        <div class="mb-6">
+            <input
+                type="text"
+                placeholder="Filter agencies..."
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                hx-get="/agencies"
+                hx-trigger="keyup changed delay:300ms"
+                hx-target="#agency-list"
+                hx-include="[name='parent_only']"
+                name="filter"
+            >
+            <label class="flex items-center mt-2">
+                <input type="checkbox" name="parent_only" value="true" class="mr-2" checked
+                    hx-get="/agencies"
+                    hx-trigger="change"
+                    hx-target="#agency-list"
+                    hx-include="[name='filter']">
+                <span class="text-sm text-gray-600">Show top-level agencies only</span>
+            </label>
+        </div>
+
+        <!-- Agency List -->
+        <div id="agency-list" class="space-y-2">
+            {% for agency in agencies %}
+            <div class="border border-gray-200 rounded-lg hover:border-blue-500 transition">
+                <div class="p-4 cursor-pointer"
+                     hx-get="/agencies/{{ agency.id }}/details"
+                     hx-target="#agency-details-{{ agency.id }}"
+                     hx-swap="innerHTML"
+                     onclick="this.nextElementSibling.classList.toggle('hidden')">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="font-semibold text-gray-800">{{ agency.display_name }}</h3>
+                            <p class="text-sm text-gray-600">{{ agency.sortable_name }}</p>
+                        </div>
+                        <div class="text-right">
+                            {% if agency.children_count > 0 %}
+                            <span class="text-sm text-gray-500">{{ agency.children_count }} sub-agencies</span>
+                            {% endif %}
+                            {% if agency.cfr_count > 0 %}
+                            <span class="text-sm text-blue-600 block">{{ agency.cfr_count }} CFR refs</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div id="agency-details-{{ agency.id }}" class="hidden border-t border-gray-200 p-4 bg-gray-50">
+                    <!-- Details loaded via HTMX -->
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if agencies|length == 0 %}
+        <p class="text-center text-gray-500 py-8">No agencies found</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
