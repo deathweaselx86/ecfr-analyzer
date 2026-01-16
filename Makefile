@@ -57,7 +57,7 @@ migrate-downgrade: ## Downgrade one migration version
 	@uv run alembic downgrade -1
 
 .PHONY: fetch
-fetch: ## Fetch eCFR data (titles and agencies)
+fetch: ## Fetch all eCFR data (titles, agencies, and CFR content with AI summaries)
 	@echo "🚀 Fetching eCFR data"
 	@uv run python scripts/fetch_ecfr.py
 

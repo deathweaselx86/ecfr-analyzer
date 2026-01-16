@@ -1,13 +1,14 @@
 """Retrieve eCFR data (agencies and titles) from eCFR API and store in PostgreSQL database."""
 
+import argparse
 import asyncio
 import sys
 from datetime import date
 from pathlib import Path
 
-# Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+import anthropic
 import defusedxml.ElementTree as ET
 import httpx
 from aiolimiter import AsyncLimiter
@@ -19,30 +20,14 @@ from app.models import Agency, AgencyCFRReference, CFRReference, TitleMetadata
 
 
 def parse_date(date_string: str | None) -> date | None:
-    """Parse ISO 8601 date string to date object.
-
-    Args:
-        date_string: ISO 8601 date string or None
-
-    Returns:
-        date object or None
-    """
+    """Parse ISO 8601 date string to date object."""
     if date_string is None:
         return None
     return date.fromisoformat(date_string)
 
 
-def extract_text_from_xml(xml_content: str) -> str:
-    """Extract text content from XML, stripping all tags.
-       This will truncate documents that are > 1048575 characters,
-       as that is the maximum length of a PostgreSQL tsvector column.
-
-    Args:
-        xml_content: XML string content
-
-    Returns:
-        Plain text content with tags removed
-    """
+async def extract_text_from_xml(xml_content: str, anthropic_client: anthropic.AsyncAnthropic) -> str:
+    """Extract text content from XML and generate a summary using Claude Haiku."""
     try:
         root = ET.fromstring(xml_content)
         text_parts = []
@@ -52,13 +37,37 @@ def extract_text_from_xml(xml_content: str) -> str:
             if element.tail:
                 text_parts.append(element.tail.strip())
         text = " ".join(part for part in text_parts if part)
-        text_length = len(text)
-        if text_length > 1048575:
-            # tsvector size must be <= 1048575,
-            # so truncate to the last 1048575 characters, since the beginning is likely to be a
-            # bunch of the same front matter
-            text = text[-1048575:]
-        return text  # noqa: TRY300
+
+        if not text:
+            return ""
+
+        try:
+            message = await anthropic_client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=100000,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"""Please provide a concise summary of the following federal regulation text.
+The summary should be less than 500 words and capture the key points, requirements, and scope of the regulation.
+Highlight any content that would indicate that the regulation hurts business. Use HTML to format the summary, not Markdown.
+
+
+Text:
+{text[:100000]}""",
+                    }
+                ],
+            )
+
+            summary = message.content[0].text
+            return summary  # noqa: TRY300
+
+        except Exception as e:  # I hate this as much as you do.
+            print(f"  Warning: Failed to generate summary with Claude: {e}")
+            # Fall back to truncated text if summarization fails (max 1MB)
+            max_size = 1_048_576  # 1MB in characters
+            return text[:max_size] if len(text) > max_size else text
+
     except ET.ParseError:
         return ""
 
@@ -66,20 +75,16 @@ def extract_text_from_xml(xml_content: str) -> str:
 async def fetch_cfr_xml_content(
     client: httpx.AsyncClient,
     limiter: AsyncLimiter,
+    anthropic_client: anthropic.AsyncAnthropic,
     cfr_date: str,
     title: int,
     chapter: str | None = None,
     part: int | None = None,
     subchapter: str | None = None,
 ) -> str | None:
-    """Fetch XML content for a CFR reference from eCFR API and extract text.
-
-    Returns:
-        Extracted text content or None if fetch fails
-    """
+    """Fetch XML content for a CFR reference from eCFR API and generate summary."""
     base_url = f"https://www.ecfr.gov/api/versioner/v1/full/{cfr_date}/title-{title}.xml"
 
-    # Build query parameters for more specific retrieval
     params = {}
     if chapter:
         params["chapter"] = chapter
@@ -92,7 +97,7 @@ async def fetch_cfr_xml_content(
         async with limiter:
             response = await client.get(base_url, params=params, timeout=30)
             response.raise_for_status()
-            return extract_text_from_xml(response.text)
+            return await extract_text_from_xml(response.text, anthropic_client)
 
     except httpx.HTTPError as e:
         print(f"  Warning: Failed to fetch XML for title {title}, chapter {chapter}, part {part}: {e}")
@@ -106,18 +111,7 @@ def get_or_create_cfr_reference(
     part: int | None,
     subchapter: str | None,
 ) -> CFRReference:
-    """Get existing CFR reference or create a new one.
-
-    Args:
-        session: SQLAlchemy session
-        title: CFR title number
-        chapter: CFR chapter
-        part: Optional CFR part
-        subchapter: Optional CFR subchapter
-
-    Returns:
-        CFRReference instance
-    """
+    """Get existing CFR reference or create a new one."""
     # Try to find existing CFR reference
     stmt = select(CFRReference).where(
         CFRReference.title == title,
@@ -145,16 +139,7 @@ def upsert_agency(
     agency_data: dict[str, object],
     parent_id: int | None = None,
 ) -> Agency:
-    """Insert or update an agency and recursively handle its children.
-
-    Args:
-        session: SQLAlchemy session
-        agency_data: Dictionary containing agency data from API
-        parent_id: Optional ID of parent agency
-
-    Returns:
-        Agency instance
-    """
+    """Insert or update an agency and recursively handle its children."""
     slug = agency_data["slug"]
 
     stmt = select(Agency).where(Agency.slug == slug)
@@ -210,15 +195,7 @@ def upsert_agency(
 
 
 def upsert_title_metadata(session: Session, title_data: dict[str, object]) -> TitleMetadata:
-    """Insert or update CFR title metadata.
-
-    Args:
-        session: SQLAlchemy session
-        title_data: Dictionary containing title data from API
-
-    Returns:
-        TitleMetadata instance
-    """
+    """Insert or update CFR title metadata."""
     number = title_data["number"]
 
     stmt = select(TitleMetadata).where(TitleMetadata.number == number)
@@ -241,17 +218,13 @@ def upsert_title_metadata(session: Session, title_data: dict[str, object]) -> Ti
         title.up_to_date_as_of = parse_date(title_data.get("up_to_date_as_of"))
         title.reserved = title_data.get("reserved", False)
 
-    session.flush()  # Flush to ensure data is written
+    session.flush()
 
     return title
 
 
 async def fetch_and_store_title_metadata(session: Session) -> None:
-    """Fetch CFR title metadata from eCFR API and store in database.
-
-    Args:
-        session: SQLAlchemy session
-    """
+    """Fetch CFR title metadata from eCFR API and store in database."""
     print("Fetching titles from eCFR API...")
     async with httpx.AsyncClient() as client:
         response = await client.get("https://www.ecfr.gov/api/versioner/v1/titles.json", timeout=30)
@@ -267,18 +240,13 @@ async def fetch_and_store_title_metadata(session: Session) -> None:
 
 
 async def fetch_and_store_agencies(session: Session) -> None:
-    """Fetch agencies from eCFR API and store in database.
-
-    Args:
-        session: SQLAlchemy session
-    """
+    """Fetch agencies from eCFR API and store in database."""
     print("Fetching agencies from eCFR API...")
     async with httpx.AsyncClient() as client:
         response = await client.get("https://www.ecfr.gov/api/admin/v1/agencies.json", timeout=30)
         response.raise_for_status()
         data = response.json()
 
-    # Insert agencies
     print("Inserting agencies...")
     agencies = data.get("agencies", [])
     for agency_data in agencies:
@@ -288,25 +256,26 @@ async def fetch_and_store_agencies(session: Session) -> None:
 
 
 async def fetch_and_populate_cfr_content(session: Session) -> None:
-    """Fetch XML content for all CFR references and populate the content field.
+    """Fetch XML content for all CFR references and populate the content field with AI-generated summaries.
 
-    Args:
-        session: SQLAlchemy session
+    Note: This will update ALL CFR references, including those that already have content.
+          Existing summaries will be regenerated and overwritten.
     """
-    print("\nFetching XML content for CFR references...")
+    print("\nFetching XML content for CFR references and generating summaries...")
+    print("Note: This will regenerate summaries for ALL CFR references, including those with existing content.")
 
-    # Get all CFR references that don't have content
-    stmt = select(CFRReference).where(
-        (CFRReference.content == None) | (CFRReference.content == "")  # noqa: E711
-    )
+    stmt = select(CFRReference)
     cfr_refs = session.execute(stmt).scalars().all()
 
-    # Rate limiting: 100 calls per 60 seconds
+    print(f"Found {len(cfr_refs)} CFR references to process.")
+
     limiter = AsyncLimiter(max_rate=100, time_period=60)
 
     updated_count = 0
     failed_count = 0
     skipped_count = 0
+
+    anthropic_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     async with httpx.AsyncClient() as client:
         for idx, cfr_ref in enumerate(cfr_refs, 1):
@@ -315,7 +284,6 @@ async def fetch_and_populate_cfr_content(session: Session) -> None:
                 f"Chapter {cfr_ref.chapter}, Part {cfr_ref.part}..."
             )
 
-            # Get the TitleMetadata for this CFR reference's title
             stmt = select(TitleMetadata).where(TitleMetadata.number == cfr_ref.title)
             title_metadata = session.execute(stmt).scalar_one_or_none()
 
@@ -326,10 +294,10 @@ async def fetch_and_populate_cfr_content(session: Session) -> None:
 
             cfr_date = title_metadata.up_to_date_as_of.isoformat()
 
-            # Fetch XML content
             content = await fetch_cfr_xml_content(
                 client=client,
                 limiter=limiter,
+                anthropic_client=anthropic_client,
                 cfr_date=cfr_date,
                 title=cfr_ref.title,
                 chapter=cfr_ref.chapter,
@@ -340,10 +308,10 @@ async def fetch_and_populate_cfr_content(session: Session) -> None:
             if content:
                 cfr_ref.content = content
                 updated_count += 1
-                print(f"    Successfully fetched {len(content)} characters (date: {cfr_date})")
+                print(f"    Successfully generated summary ({len(content)} characters, date: {cfr_date})")
             else:
                 failed_count += 1
-                print("    Failed to fetch content")
+                print("    Failed to generate summary")
 
             # Commit every 10 records to avoid losing progress
             if idx % 10 == 0:
@@ -359,16 +327,34 @@ async def fetch_and_populate_cfr_content(session: Session) -> None:
     print(f"  Skipped: {skipped_count}")
 
 
-async def ingest_ecfr_data() -> None:
+async def ingest_ecfr_data(
+    fetch_titles: bool = True,
+    fetch_agencies: bool = True,
+    fetch_cfr_content: bool = True,
+) -> None:
     """Async main function for fetching data."""
     print("Connecting to database...")
     engine = create_engine(settings.ecfr_database_url, echo=False)
 
     try:
         with Session(engine) as session:
-            await fetch_and_store_title_metadata(session)
-            await fetch_and_store_agencies(session)
-            await fetch_and_populate_cfr_content(session)
+            if fetch_titles:
+                print("\n=== Fetching Titles ===")
+                await fetch_and_store_title_metadata(session)
+            else:
+                print("\n=== Skipping Titles (not requested) ===")
+
+            if fetch_agencies:
+                print("\n=== Fetching Agencies ===")
+                await fetch_and_store_agencies(session)
+            else:
+                print("\n=== Skipping Agencies (not requested) ===")
+
+            if fetch_cfr_content:
+                print("\n=== Fetching CFR Content ===")
+                await fetch_and_populate_cfr_content(session)
+            else:
+                print("\n=== Skipping CFR Content (not requested) ===")
 
             session.commit()
     except Exception as e:
@@ -379,7 +365,43 @@ async def ingest_ecfr_data() -> None:
 
 
 def main() -> None:
-    asyncio.run(ingest_ecfr_data())
+    """Parse CLI arguments and run data ingestion."""
+    parser = argparse.ArgumentParser(
+        description="Fetch eCFR data (titles, agencies, and/or CFR content) from eCFR API",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument(
+        "--titles",
+        action="store_true",
+        help="Fetch and store CFR title metadata",
+    )
+    parser.add_argument(
+        "--agencies",
+        action="store_true",
+        help="Fetch and store agencies with their CFR references",
+    )
+    parser.add_argument(
+        "--cfr-references",
+        action="store_true",
+        dest="cfr_references",
+        help="Fetch XML content and generate AI summaries for CFR references",
+    )
+
+    args = parser.parse_args()
+
+    # If no specific flags are provided, fetch everything
+    if not (args.titles or args.agencies or args.cfr_references):
+        print("No specific flags provided - fetching everything (titles, agencies, and CFR content)")
+        fetch_titles = True
+        fetch_agencies = True
+        fetch_cfr_content = True
+    else:
+        fetch_titles = args.titles
+        fetch_agencies = args.agencies
+        fetch_cfr_content = args.cfr_references
+
+    asyncio.run(ingest_ecfr_data(fetch_titles, fetch_agencies, fetch_cfr_content))
 
 
 if __name__ == "__main__":

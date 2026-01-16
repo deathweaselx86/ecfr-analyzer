@@ -21,19 +21,18 @@ class Settings(BaseSettings):
     )
 
     ecfr_database_url: str
+    anthropic_api_key: str
 
     api_title: str = "eCFR Analyzer API"
     api_description: str = "Read-only REST API for analyzing federal regulations by agency"
     api_version: str = "0.0.1"
 
-    # Server Configuration
+    # default server settings
     host: str = "0.0.0.0"  # noqa: S104
     port: int = 8000
-    debug: bool = False
+    debug: bool = True
 
-    # CORS
     cors_origins: list[str] = ["*"]
 
 
-# Create a singleton instance
 settings = Settings()

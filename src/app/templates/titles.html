@@ -63,6 +63,24 @@
                             </div>
                             {% endif %}
                         </dl>
+
+                        <!-- CFR References -->
+                        {% if title.cfr_references %}
+                        <div class="mt-4 pt-4 border-t border-gray-200">
+                            <h4 class="text-sm font-semibold text-gray-700 mb-2">
+                                CFR References ({{ title.cfr_references|length }})
+                            </h4>
+                            <div class="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                                {% for cfr in title.cfr_references %}
+                                <div class="text-xs bg-gray-50 rounded px-3 py-2 hover:bg-gray-100 transition">
+                                    <a href="/cfr/{{ cfr.id }}" class="text-blue-600 hover:text-blue-800 font-medium">
+                                        Title {{ cfr.title }}{% if cfr.chapter %}, Chapter {{ cfr.chapter }}{% endif %}{% if cfr.part %}, Part {{ cfr.part }}{% endif %}{% if cfr.subchapter %}, Subchapter {{ cfr.subchapter }}{% endif %}
+                                    </a>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>

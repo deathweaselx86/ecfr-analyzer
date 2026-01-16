@@ -97,5 +97,11 @@ class TitleMetadata(Base):
     latest_issue_date = Column(Date, nullable=True)
     up_to_date_as_of = Column(Date, nullable=True)
     reserved = Column(Boolean, nullable=False, default=False)
+    keywords = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    # Relationships
+    cfr_references = relationship(
+        "CFRReference", primaryjoin="TitleMetadata.number == foreign(CFRReference.title)", viewonly=True
+    )

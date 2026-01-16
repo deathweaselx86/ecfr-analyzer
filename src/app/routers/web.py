@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -14,7 +15,6 @@ from app.models import Agency, CFRReference, TitleMetadata
 
 router = APIRouter(tags=["web"])
 
-# Setup templates
 templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
 
@@ -29,7 +29,6 @@ def calculate_word_count(content: str | None) -> int:
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
 def home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     """Home page with statistics and quick search."""
-    # Get stats
     total_agencies = db.execute(select(func.count(Agency.id))).scalar_one()
     total_titles = db.execute(select(func.count(TitleMetadata.number))).scalar_one()
     total_cfr_refs = db.execute(select(func.count(CFRReference.id))).scalar_one()
@@ -55,8 +54,7 @@ def agencies_page(
     parent_only: bool = True,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    """Basic"""
-    # Build query
+    """Get all agencies"""
     stmt = select(Agency).options(selectinload(Agency.cfr_references), selectinload(Agency.children))
 
     if parent_only:
@@ -73,7 +71,6 @@ def agencies_page(
 
     agencies_result = db.execute(stmt).scalars().all()
 
-    # Add counts to agencies
     agencies_with_counts = []
     for agency in agencies_result:
         agencies_with_counts.append({
@@ -118,8 +115,8 @@ def titles_page(
     include_reserved: bool = False,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    """Titles listing page with filters."""
-    stmt = select(TitleMetadata)
+    """Titles listing page with filters and associated CFR references."""
+    stmt = select(TitleMetadata).options(selectinload(TitleMetadata.cfr_references))
 
     if not include_reserved:
         stmt = stmt.where(TitleMetadata.reserved == False)  # noqa: E712
@@ -145,64 +142,87 @@ def search_page(request: Request, q: str | None = None) -> HTMLResponse:
 
 
 @router.get("/search/results", response_class=HTMLResponse, include_in_schema=False)
-def search_results(request: Request, q: str, limit: int = 20, db: Session = Depends(get_db)) -> HTMLResponse:
-    """Full-text search results using PostgreSQL tsvector."""
-    # Perform full-text search
-    stmt = (
-        select(CFRReference)
-        .options(selectinload(CFRReference.agencies))
-        .where(CFRReference.search_vector.op("@@")(func.plainto_tsquery("english", q)))
-        .order_by(func.ts_rank(CFRReference.search_vector, func.plainto_tsquery("english", q)).desc())
-        .limit(limit)
-    )
+async def search_results(request: Request, q: str, page: int = 1, per_page: int = 20) -> HTMLResponse:
+    """Full-text search results using eCFR.gov API."""
+    # Call eCFR.gov search API
+    api_url = "https://www.ecfr.gov/api/search/v1/results"
+    params: dict[str, str | int] = {"query": q, "page": page, "per_page": per_page}
 
-    results_raw = db.execute(stmt).scalars().all()
-
-    # Add word count and snippet to results
-    results = []
-    for cfr in results_raw:
-        word_count = calculate_word_count(cfr.content)
-
-        # Create snippet using ts_headline for context around matches
-        # MaxWords=70 gives roughly 512 characters, MinWords=50, MaxFragments=3 for multiple matches
-        snippet = ""
-        if cfr.content:
-            snippet_stmt = select(
-                func.ts_headline(
-                    "english",
-                    cfr.content,
-                    func.plainto_tsquery("english", q),
-                    "MaxWords=70, MinWords=50, MaxFragments=3, StartSel=<mark>, StopSel=</mark>",
-                )
-            ).where(CFRReference.id == cfr.id)
-            snippet = db.execute(snippet_stmt).scalar_one()
-
-        # Get rank
-        rank_stmt = select(func.ts_rank(CFRReference.search_vector, func.plainto_tsquery("english", q))).where(
-            CFRReference.id == cfr.id
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(api_url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+    except httpx.HTTPError as e:
+        return templates.TemplateResponse(
+            "search_results.html",
+            {
+                "request": request,
+                "version": settings.api_version,
+                "query": q,
+                "results": [],
+                "error": f"Search API error: {e}",
+                "metadata": {},
+            },
         )
-        rank = db.execute(rank_stmt).scalar_one()
+
+    # Transform eCFR API results to template format
+    results = []
+    for result in data.get("results", []):
+        # Extract hierarchy information
+        hierarchy = result.get("hierarchy", {})
+        headings = result.get("hierarchy_headings", {})
+
+        # Build a readable title
+        title_parts = []
+        if hierarchy.get("title"):
+            title_parts.append(f"Title {hierarchy['title']}")
+        if headings.get("chapter"):
+            title_parts.append(f"Chapter {headings['chapter']}")
+        if headings.get("part"):
+            title_parts.append(f"Part {headings['part']}")
+        if headings.get("section"):
+            title_parts.append(f"§ {headings['section']}")
+
+        title_str = " - ".join(title_parts) if title_parts else "Unknown"
+
+        # Get the heading/subject
+        heading = result.get("headings", {}).get("section") or result.get("headings", {}).get("part") or ""
 
         results.append({
-            "id": cfr.id,
-            "title": cfr.title,
-            "chapter": cfr.chapter,
-            "part": cfr.part,
-            "subchapter": cfr.subchapter,
-            "snippet": snippet,
-            "word_count": word_count,
-            "rank": float(rank),
-            "agencies": cfr.agencies[:10],  # Limit to 10 agencies
+            "title": hierarchy.get("title"),
+            "chapter": hierarchy.get("chapter"),
+            "part": hierarchy.get("part"),
+            "section": hierarchy.get("section"),
+            "subchapter": hierarchy.get("subchapter"),
+            "title_str": title_str,
+            "heading": heading,
+            "snippet": result.get("full_text_excerpt", ""),
+            "score": result.get("score", 0),
+            "type": result.get("type", ""),
+            "reserved": result.get("reserved", False),
         })
 
+    # Get metadata for pagination
+    metadata = data.get("metadata", {})
+
     return templates.TemplateResponse(
-        "search_results.html", {"request": request, "version": settings.api_version, "query": q, "results": results}
+        "search_results.html",
+        {
+            "request": request,
+            "version": settings.api_version,
+            "query": q,
+            "results": results,
+            "metadata": metadata,
+            "page": page,
+            "per_page": per_page,
+        },
     )
 
 
 @router.get("/cfr/{cfr_id}", response_class=HTMLResponse, include_in_schema=False)
-def cfr_detail(request: Request, cfr_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
-    """CFR reference detail page."""
+async def cfr_detail(request: Request, cfr_id: int, db: Session = Depends(get_db)) -> HTMLResponse:
+    """CFR reference detail page with historical corrections."""
     stmt = select(CFRReference).options(selectinload(CFRReference.agencies)).where(CFRReference.id == cfr_id)
     cfr = db.execute(stmt).scalar_one_or_none()
 
@@ -211,6 +231,49 @@ def cfr_detail(request: Request, cfr_id: int, db: Session = Depends(get_db)) -> 
 
     word_count = calculate_word_count(cfr.content)
 
+    # Get the title metadata for up-to-date date
+    stmt = select(TitleMetadata).where(TitleMetadata.number == cfr.title)
+    title_metadata = db.execute(stmt).scalar_one_or_none()
+
+    # Construct XML URL for ecfr.gov
+    xml_url = None
+    if title_metadata and title_metadata.up_to_date_as_of:
+        cfr_date = title_metadata.up_to_date_as_of.isoformat()
+        xml_url = f"https://www.ecfr.gov/api/versioner/v1/full/{cfr_date}/title-{cfr.title}.xml"
+
+        # Add query parameters for more specific retrieval
+        params = []
+        if cfr.chapter:
+            params.append(f"chapter={cfr.chapter}")
+        if cfr.part:
+            params.append(f"part={cfr.part}")
+        if cfr.subchapter:
+            params.append(f"subchapter={cfr.subchapter}")
+
+        if params:
+            xml_url += "?" + "&".join(params)
+
+    # Fetch corrections from eCFR API
+    corrections = []
+    try:
+        async with httpx.AsyncClient() as client:
+            corrections_url = f"https://www.ecfr.gov/api/admin/v1/corrections/title/{cfr.title}.json"
+            response = await client.get(corrections_url, timeout=10)
+            response.raise_for_status()
+            corrections_data = response.json()
+            corrections = corrections_data.get("ecfr_corrections", [])
+    except httpx.HTTPError:
+        # If corrections API fails, just continue without corrections
+        pass
+
     return templates.TemplateResponse(
-        "cfr_detail.html", {"request": request, "version": settings.api_version, "cfr": cfr, "word_count": word_count}
+        "cfr_detail.html",
+        {
+            "request": request,
+            "version": settings.api_version,
+            "cfr": cfr,
+            "word_count": word_count,
+            "xml_url": xml_url,
+            "corrections": corrections,
+        },
     )

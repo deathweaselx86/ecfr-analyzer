@@ -34,17 +34,100 @@
             </div>
         </div>
         {% endif %}
+
+        <!-- XML Link -->
+        {% if xml_url %}
+        <div class="mt-4 pt-4 border-t border-gray-200">
+            <p class="text-sm font-semibold text-gray-700 mb-2">Official XML Source:</p>
+            <a href="{{ xml_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                </svg>
+                View XML on eCFR.gov
+            </a>
+        </div>
+        {% endif %}
     </div>
 
-    <!-- Content -->
     {% if cfr.content %}
-    <div class="bg-white rounded-lg shadow-lg p-8">
-        <h2 class="text-xl font-bold text-gray-800 mb-4">Content</h2>
-        <div class="prose prose-sm max-w-none text-gray-700 leading-relaxed whitespace-pre-wrap">{{ cfr.content }}</div>
+    <div class="bg-white rounded-lg shadow-lg p-8 mb-6">
+        <h2 class="text-xl font-bold text-gray-800 mb-4">Content Summary</h2>
+        <div class="prose prose-sm max-w-none text-gray-700 leading-relaxed mb-4">
+            {{ (cfr.content[:500] ~ ('...' if cfr.content|length > 500 else ''))|safe }}
+        </div>
+        {% if cfr.content|length > 500 %}
+        <details class="group">
+            <summary class="cursor-pointer list-none text-blue-600 hover:text-blue-700 font-medium inline-flex items-center">
+                Show full content ({{ "{:,}".format(cfr.content|length - 500) }} more characters)
+                <svg class="w-4 h-4 ml-1 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </summary>
+            <div class="prose prose-sm max-w-none text-gray-700 leading-relaxed mt-4">
+                {{ cfr.content|safe }}
+            </div>
+        </details>
+        {% endif %}
     </div>
     {% else %}
-    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center mb-6">
         <p class="text-yellow-800">No content available for this CFR reference</p>
+    </div>
+    {% endif %}
+
+    {% if corrections %}
+    <div class="bg-white rounded-lg shadow-lg p-6">
+        <details class="group">
+            <summary class="cursor-pointer list-none flex items-center justify-between">
+                <h2 class="text-xl font-bold text-gray-800">Historical Corrections ({{ corrections|length }})</h2>
+                <svg class="w-5 h-5 text-gray-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </summary>
+            <div class="space-y-4 mt-4">
+                {% for correction in corrections %}
+                <div class="border border-gray-200 rounded-lg p-4 hover:border-blue-400 transition">
+                    <div class="flex items-start justify-between mb-2">
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-gray-800 mb-2">{{ correction.corrective_action }}</h3>
+
+                            {% if correction.cfr_references %}
+                            <div class="mb-2">
+                                <span class="text-xs font-medium text-gray-600">Affects: </span>
+                                {% for ref in correction.cfr_references %}
+                                <span class="inline-block text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded mr-1">
+                                    {{ ref.cfr_reference }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 mt-2">
+                                {% if correction.error_occurred %}
+                                <div>
+                                    <span class="font-medium">Error Occurred:</span>
+                                    <span class="text-gray-700">{{ correction.error_occurred }}</span>
+                                </div>
+                                {% endif %}
+                                {% if correction.error_corrected %}
+                                <div>
+                                    <span class="font-medium">Corrected:</span>
+                                    <span class="text-gray-700">{{ correction.error_corrected }}</span>
+                                </div>
+                                {% endif %}
+                                {% if correction.fr_citation %}
+                                <div>
+                                    <span class="font-medium">FR Citation:</span>
+                                    <span class="text-gray-700">{{ correction.fr_citation }}</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </details>
     </div>
     {% endif %}
 </div>

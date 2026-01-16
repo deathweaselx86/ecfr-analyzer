@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-# Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from sqlalchemy import create_engine
@@ -13,11 +12,7 @@ from app.models import Base
 
 
 def create_tables(database_url: str) -> None:
-    """Create all database tables.
-
-    Args:
-        database_url: PostgreSQL connection string
-    """
+    """Create all database tables."""
     print("Connecting to database...")
     engine = create_engine(database_url, echo=False)
 
