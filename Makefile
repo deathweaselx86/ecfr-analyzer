@@ -67,7 +67,7 @@ serve: ## Run FastAPI development server
 	@cd src && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 .PHONY: help
-help:
+help: # The regex here serves to strip out, then pretty print lines beginning with `[target name]: ## comment`..
 	@uv run python -c "import re; \
 	[[print(f'\033[36m{m[0]:<20}\033[0m {m[1]}') for m in re.findall(r'^([a-zA-Z_-]+):.*?## (.*)$$', open(makefile).read(), re.M)] for makefile in ('$(MAKEFILE_LIST)').strip().split()]"
 
