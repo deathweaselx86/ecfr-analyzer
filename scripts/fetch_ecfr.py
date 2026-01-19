@@ -106,26 +106,30 @@ async def fetch_cfr_xml_content(
 
 def get_or_create_cfr_reference(
     session: Session,
-    title: int,
-    chapter: str,
-    part: int | None,
+    title: int | str,
+    chapter: str | None,
+    part: int | str | None,
     subchapter: str | None,
 ) -> CFRReference:
     """Get existing CFR reference or create a new one."""
+    # Convert title and part to strings for database storage
+    title_str = str(title) if title is not None else None
+    part_str = str(part) if part is not None else None
+
     # Try to find existing CFR reference
     stmt = select(CFRReference).where(
-        CFRReference.title == title,
+        CFRReference.title == title_str,
         CFRReference.chapter == chapter,
-        CFRReference.part == part,
+        CFRReference.part == part_str,
         CFRReference.subchapter == subchapter,
     )
     cfr_ref = session.execute(stmt).scalar_one_or_none()
 
     if cfr_ref is None:
         cfr_ref = CFRReference(
-            title=title,
+            title=title_str,
             chapter=chapter,
-            part=part,
+            part=part_str,
             subchapter=subchapter,
         )
         session.add(cfr_ref)

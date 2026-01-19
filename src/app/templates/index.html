@@ -13,20 +13,75 @@
 
 
         <div class="mb-6">
-            <form hx-get="/search/results" hx-target="#search-results" hx-trigger="submit" hx-swap="innerHTML" class="flex gap-2">
+            <!-- Search type selector -->
+            <div class="mb-3 flex gap-4">
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="search-type" value="local" class="mr-2" checked>
+                    <span class="text-sm font-medium text-gray-700">
+                        <span class="inline-flex items-center">
+                            <svg class="w-4 h-4 mr-1 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+                                <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/>
+                            </svg>
+                            AI Summaries
+                        </span>
+                    </span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="search-type" value="ecfr" class="mr-2">
+                    <span class="text-sm font-medium text-gray-700">
+                        <span class="inline-flex items-center">
+                            <svg class="w-4 h-4 mr-1 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+                            </svg>
+                            eCFR.gov Official
+                        </span>
+                    </span>
+                </label>
+            </div>
+
+            <!-- Search form -->
+            <form id="search-form" hx-get="/search/local" hx-target="#search-results" hx-trigger="submit" hx-swap="innerHTML" class="flex gap-2">
                 <input
                     type="text"
                     name="q"
-                    placeholder="Search CFR content..."
-                    class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    id="search-input"
+                    placeholder="Search AI-generated summaries..."
+                    class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     required
                 >
-                <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                <button type="submit" id="search-button" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
                     Search
                 </button>
             </form>
             <div id="search-results" class="mt-4"></div>
         </div>
+
+        <script>
+            // Switch search endpoint and styling based on selected type
+            document.querySelectorAll('input[name="search-type"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    const form = document.getElementById('search-form');
+                    const input = document.getElementById('search-input');
+                    const button = document.getElementById('search-button');
+
+                    if (this.value === 'local') {
+                        form.setAttribute('hx-get', '/search/local');
+                        input.placeholder = 'Search AI-generated summaries...';
+                        input.className = 'flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent';
+                        button.className = 'px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition';
+                    } else {
+                        form.setAttribute('hx-get', '/search/results');
+                        input.placeholder = 'Search official CFR content...';
+                        input.className = 'flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+                        button.className = 'px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition';
+                    }
+
+                    // Re-initialize htmx for the form
+                    htmx.process(form);
+                });
+            });
+        </script>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">

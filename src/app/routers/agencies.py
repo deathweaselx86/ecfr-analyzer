@@ -18,17 +18,7 @@ def list_agencies(
     parent_id: int | None = None,
     db: Session = Depends(get_db),
 ) -> list[Agency]:
-    """List all agencies with pagination and optional parent filter.
-
-    Args:
-        skip: Number of records to skip
-        limit: Maximum number of records to return
-        parent_id: Filter by parent agency ID (None for top-level agencies)
-        db: Database session
-
-    Returns:
-        List of agencies
-    """
+    """List all agencies with pagination and optional parent filter."""
     stmt = select(Agency)
 
     if parent_id is not None:
@@ -45,18 +35,7 @@ def list_agencies(
 
 @router.get("/{agency_id}", response_model=AgencyDetailSchema)
 def get_agency(agency_id: int, db: Session = Depends(get_db)) -> Agency:
-    """Get a single agency by ID with all relationships.
-
-    Args:
-        agency_id: Agency ID
-        db: Database session
-
-    Returns:
-        Agency with relationships
-
-    Raises:
-        HTTPException: If agency not found
-    """
+    """Get a single agency by ID with all relationships."""
     stmt = (
         select(Agency)
         .where(Agency.id == agency_id)
@@ -74,18 +53,7 @@ def get_agency(agency_id: int, db: Session = Depends(get_db)) -> Agency:
 
 @router.get("/slug/{slug}", response_model=AgencyDetailSchema)
 def get_agency_by_slug(slug: str, db: Session = Depends(get_db)) -> Agency:
-    """Get a single agency by slug with all relationships.
-
-    Args:
-        slug: Agency slug
-        db: Database session
-
-    Returns:
-        Agency with relationships
-
-    Raises:
-        HTTPException: If agency not found
-    """
+    """Get a single agency by slug with all relationships."""
     stmt = (
         select(Agency)
         .where(Agency.slug == slug)

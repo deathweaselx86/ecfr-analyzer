@@ -14,9 +14,10 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    cast,
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import DeclarativeBase, foreign, relationship
 
 
 class Base(DeclarativeBase):
@@ -55,9 +56,9 @@ class CFRReference(Base):
     __tablename__ = "cfr_references"
 
     id = Column(Integer, primary_key=True)
-    title = Column(Integer, nullable=False)
+    title = Column(String, nullable=False)
     chapter = Column(String, nullable=True)
-    part = Column(Integer, nullable=True)
+    part = Column(String, nullable=True)
     subchapter = Column(String, nullable=True)
     content = Column(Text, nullable=True)
 
@@ -103,5 +104,7 @@ class TitleMetadata(Base):
 
     # Relationships
     cfr_references = relationship(
-        "CFRReference", primaryjoin="TitleMetadata.number == foreign(CFRReference.title)", viewonly=True
+        "CFRReference",
+        primaryjoin=lambda: cast(TitleMetadata.number, String) == foreign(CFRReference.title),
+        viewonly=True,
     )

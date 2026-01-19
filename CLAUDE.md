@@ -13,11 +13,15 @@ All application code lives under `src/app/`:
 
 - **Models** (`src/app/models.py`): SQLAlchemy ORM models defining database schema
   - `Agency`: Federal agencies with hierarchical parent-child relationships
-  - `CFRReference`: CFR title/chapter/part/subchapter references with text content
-    - `content` field stores extracted text from eCFR XML for full-text search
-    - `search_vector` computed field provides PostgreSQL full-text search via GIN index
+  - `CFRReference`: CFR title/chapter/part/subchapter references with AI-generated summaries
+    - `title` and `part` are VARCHAR (not INTEGER) - stored as strings for flexibility
+    - `content` field stores AI-generated summaries from Claude 3.5 Haiku
+    - `search_vector` computed field (TSVECTOR) provides PostgreSQL full-text search via GIN index
+      - Automatically generated from `content` field using `to_tsvector('english', ...)`
+      - Used by `/search/local` endpoint for fast full-text search of AI summaries
   - `AgencyCFRReference`: Many-to-many junction table
-  - `TitleMetadata`: CFR titles with metadata (amendment dates, reserved status)
+  - `TitleMetadata`: CFR titles with metadata (amendment dates, reserved status, keywords)
+    - `keywords` field for searchable keywords (VARCHAR)
   - All models include SQLAlchemy relationships for ORM queries
 
 - **API** (`src/app/main.py`): FastAPI app with CORS middleware
@@ -59,6 +63,10 @@ All application code lives under `src/app/`:
 - Migration files in `alembic/versions/`
 - `alembic/env.py` automatically loads database URL from `settings.ecfr_database_url`
 - Uses same path management pattern as scripts (`sys.path.insert()` to import from `src/`)
+- **Current migrations**:
+  - `dea0cacdf16b`: Initial schema
+  - `1db8fa14de36`: Add keywords column to TitleMetadata
+  - `1c3024451e5f`: Convert title and part columns to VARCHAR (preserving data)
 
 ### Path Management
 All scripts add `src/` to Python path using:
@@ -69,7 +77,7 @@ This allows imports like `from app.models import Agency` from scripts directory.
 
 ## Development Environment
 
-Uses `uv` for dependency management. Python 3.14+ supported.
+Uses `uv` for dependency management. Python 3.10-3.14 supported (tested in CI).
 
 ### Initial Setup
 ```bash
@@ -135,13 +143,14 @@ The `make fetch` command (or running the script directly) can perform three step
 ```bash
 make serve     # Run FastAPI dev server at http://0.0.0.0:8000
 # Web Frontend Endpoints:
-#   GET /                            - Home page with statistics
+#   GET /                            - Home page with statistics and dual search (local + eCFR.gov)
 #   GET /agencies                    - Browse agencies with filtering
 #   GET /agencies/{id}/details       - Agency detail page with CFR references and word count
 #   GET /titles                      - Browse titles with filtering
-#   GET /cfr/{id}                    - CFR reference detail page with content and agencies
+#   GET /cfr/{id}                    - CFR reference detail page with AI summary, agencies, corrections
 #   GET /search                      - Search form
-#   GET /search/results?q=query      - Full-text search results using PostgreSQL tsvector
+#   GET /search/local?q=query        - Local search of AI summaries using PostgreSQL full-text search
+#   GET /search/results?q=query      - External search from eCFR.gov API with AI summary previews
 #
 # REST API Endpoints:
 #   GET /health                      - Health check
@@ -215,6 +224,9 @@ make docs-test          # Test if documentation builds without errors
 - `ruff>=0.14.10` - Linting and formatting
 - `mypy>=1.19.1` - Static type checking
 - `pytest>=9.0.2` + `pytest-cov>=7.0.0` - Testing
+- `pytest-asyncio>=0.25.2` - Async test support
+- `pytest-mock>=3.14.0` - Mocking capabilities
+- `httpx>=0.28.1` - Async HTTP client (also used in tests)
 
 ## Code Quality Configuration
 
@@ -265,11 +277,17 @@ docs/                 # MkDocs documentation
 
 - **Agency hierarchy**: Self-referential `parent_id` foreign key with CASCADE delete
 - **CFR references**: Shared across agencies via junction table (not unique per agency)
+  - `title` and `part` columns are VARCHAR (not INTEGER) for flexibility with string identifiers
   - `content` field stores AI-generated summaries from Claude 3.5 Haiku (<500 words per regulation)
-  - `search_vector` computed column enables full-text search with GIN index
+  - `search_vector` computed column (TSVECTOR) enables full-text search with GIN index
+    - **Actively used** by `/search/local` endpoint for searching AI summaries
+    - Automatically updated when `content` changes (PostgreSQL computed column)
+    - Supports ranking, highlighting, and advanced search operators
   - Summaries are more concise and searchable than raw regulation text
-- **TitleMetadata uniqueness**: Primary key is `number` (not auto-increment ID)
+- **TitleMetadata uniqueness**: Primary key is `number` (INTEGER, not auto-increment)
   - `up_to_date_as_of` date used for versioned XML retrieval per title
+  - `keywords` field (TEXT) for searchable metadata
+  - Relationship to CFRReference uses type casting: `cast(number, String) == CFRReference.title`
 - **Upsert patterns**: Scripts use `ON CONFLICT` for idempotent re-runs
 - **Indexes**: Created on `agencies.slug`, `agencies.parent_id`, `cfr_references.search_vector` (GIN), and junction table foreign keys
 
@@ -283,23 +301,42 @@ docs/                 # MkDocs documentation
 
 ## Web Frontend Features
 
-The application includes a web UI (`src/app/routers/web.py`) built with Jinja2 templates:
+The application includes a web UI (`src/app/routers/web.py`) built with Jinja2 templates and Tailwind CSS:
 
-- **Home page**: Displays statistics (total agencies, titles)
+- **Home page**: Displays statistics (total agencies, titles) with **dual search options**
+  - Radio buttons to choose between "AI Summaries" (local) or "eCFR.gov Official" (external)
+  - Search form uses HTMX to load results dynamically into `#search-results` div without page refresh
+  - JavaScript dynamically updates form endpoint, placeholder text, and button styling based on selection
 - **Agency browsing**: Filter by name/slug, toggle parent-only view, see CFR reference counts
 - **Title browsing**: Filter titles, toggle reserved titles, view associated CFR references
-- **Full-text search**: Uses eCFR.gov API for search results with pagination
+- **Search functionality** (dual modes):
+  - **Local search** (`/search/local`):
+    - Uses PostgreSQL full-text search on `search_vector` column
+    - Searches AI-generated summaries stored locally
+    - Uses `plainto_tsquery()` for query parsing and `@@` operator for matching
+    - Ranks results by relevance using `ts_rank()`
+    - Generates highlighted excerpts using `ts_headline()` (max 50 words)
+    - Shows matching excerpt, associated agencies, and relevance score
+    - Links to full CFR summary and eCFR.gov
+    - Pagination with HTMX (updates results div without page reload)
+  - **External search** (`/search/results`):
+    - Uses eCFR.gov API (`/api/search/v1/results`) for official content search
+    - Queries local database to find matching CFR references for AI summary previews
+    - Shows first 2 sentences of AI summaries when available
+    - Links to both eCFR.gov (official) and local CFR detail pages (AI summary)
+    - Pagination support via query parameters
 - **Detail pages**:
   - Agency details with word count across all CFR references
   - CFR reference details with:
-    - AI-generated summaries (rendered as markdown)
-    - Associated agencies
-    - Links to eCFR.gov XML source
+    - AI-generated summaries (first 500 chars visible, expandable with HTML `<details>`)
+    - Associated agencies with links
+    - Links to eCFR.gov XML source (versioned by `up_to_date_as_of` date)
     - **Historical corrections** fetched from eCFR API showing corrective actions, dates, and Federal Register citations
-- **Markdown rendering**: CFR content summaries are rendered as formatted HTML using custom Jinja2 filter
-  - Supports standard markdown features (headings, bold, italic, lists, links)
-  - Uses `markdown` library with `extra`, `nl2br`, and `sane_lists` extensions
-  - Renders with Tailwind's `prose` classes for clean typography
+    - Corrections are collapsible by default using HTML `<details>` element
+- **Content rendering**: CFR summaries use `|safe` filter (HTML from AI, not markdown)
+- **Helper functions**:
+  - `calculate_word_count()`: Counts words in CFR content
+  - `extract_first_sentences()`: Extracts first N sentences from text (strips HTML tags)
 - Templates use `include_in_schema=False` to hide from OpenAPI docs
 
 ## CI/CD Pipeline
